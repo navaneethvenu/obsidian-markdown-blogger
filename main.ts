@@ -1,4 +1,4 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, FuzzySuggestModal, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import * as fs from "fs";
 import * as path from "path";
 
@@ -73,6 +73,15 @@ export default class MarkdownBlogger extends Plugin {
 			},
 		});
 
+		this.addCommand({
+			id: 'push-to-path-md',
+			name: 'Push to path',
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				new PathModal(this.app).open();
+				console.log("hello");
+			}
+		});
+
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new MarkdownBloggerSettingTab(this.app, this));
 	}
@@ -103,6 +112,47 @@ class ErrorModal extends Modal {
 	onClose() {
 		const {contentEl} = this;
 		contentEl.empty();
+	}
+}
+
+
+// const ALL_PATHS = [
+// 	{
+// 		name: "alexa"
+// 	},
+// 	{
+// 		name: "documents"
+// 	}
+// ]
+class PathModal extends FuzzySuggestModal<string> {
+	currPath = "/";
+	getItems(): string[] {
+		const paths = fs.readdirSync(this.currPath).filter((path) => path[0] !== ".");
+		
+		paths.push("..");
+		paths.push("Enter");
+
+		return paths;
+	}
+	getItemText(path: string): string {
+		return path;
+	}
+	onChooseItem(path: string, evt: MouseEvent | KeyboardEvent) {
+		if (path === "..") {
+			const pathArr = this.currPath.split("/");
+			console.log("1", pathArr)
+			pathArr.pop();
+			pathArr.pop();
+			console.log("2", pathArr)
+			this.currPath = pathArr.join("/");
+			console.log(this.currPath);
+		} else if (path === "Enter") {
+			new Notice(this.currPath);
+			return;
+		} else {
+			this.currPath += `${path}/`;
+		}
+		this.open();
 	}
 }
 
