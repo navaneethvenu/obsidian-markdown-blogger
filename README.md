@@ -33,7 +33,7 @@ Same as Push command but allows you to navigate through your system's folders mu
 - Open a markdown note in editing mode
 - Open the command palette and search "Push to custom path"
 - Search and choose folders to navigate to your desired location
-- *..* moves up a directory and **Select** will push the md file to the current directory
+- `..` moves up a directory and `Select` will push the md file to the current directory
 - If the file already exists, choosing the file name will also push
 
 #### Pull markdown command 
@@ -47,7 +47,7 @@ Same as Pull command but allows you to navigate through your system's folders mu
 - Open a markdown note in editing mode
 - Open the command palette and search "Pull from custom path"
 - Search and choose folders to navigate to your desired location
-- *..* moves up a directory and **Select** will pull the md file from the current directory
+- `..` moves up a directory and `Select` will pull the md file from the current directory
 - Choosing the file name will also pull it into the editor
 
 #### Validate path command
