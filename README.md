@@ -11,25 +11,46 @@ project. Also makes it much easier to keep these two files in-sync.
 
 ## Features
 - **Push** a markdown note to a local project folder (Obsidian -> Project)
+- **Push to custom path**
 - **Pull** content from a local project file to a markdown note (Obsidian <- Project)
+- **Pull from custom path** 
 
 ## Usage
 After enabling the plugin, go to Markdown Blogger's settings.
-- Set the **Local Project Folder Path**. Must be an **absolute** path.
+- Set the **Local project folder path**. Must be an **absolute** path.
+- For **custom path** commands, **Show hidden folders** can be toggled.
 
-### Push markdown command
+### Commands
+
+#### Push markdown command
 Creates or overwrites a file at location `/PROJECT_PATH/<note_name>.md` with the current note's markdown content.
 - Open a markdown note in editing mode
-- Open the command palette and search "Push Markdown command"
-- If the **Local Project Folder Path** is invalid or does not exist, the note will not be pushed
+- Open the command palette and search "Push markdown"
+- If the **Local project folder path** is invalid or does not exist, the note will not be pushed
 
-### Pull markdown command 
+#### Push to custom path command
+Same as Push command but allows you to navigate through your system's folders much like a terminal.
+- Open a markdown note in editing mode
+- Open the command palette and search "Push to custom path"
+- Search and choose folders to navigate to your desired location
+- *..* moves up a directory and **Select** will push the md file to the current directory
+- If the file already exists, choosing the file name will also push
+
+#### Pull markdown command 
 Overwrites the current note's markdown content with the file content at location `/PROJECT_PATH/<note_name>.md`
 - Open a markdown note in editing mode
-- Open the command palette and search "Pull Markdown command"
+- Open the command palette and search "Pull markdown"
 - If the file at location `/PROJECT_PATH/<note_name>.md` is invalid or does not exist, the content will not be pulled
 
-### Validate path command
+#### Pull from custom path command
+Same as Pull command but allows you to navigate through your system's folders much like a terminal.
+- Open a markdown note in editing mode
+- Open the command palette and search "Pull from custom path"
+- Search and choose folders to navigate to your desired location
+- *..* moves up a directory and **Select** will pull the md file from the current directory
+- Choosing the file name will also pull it into the editor
+
+#### Validate path command
 Validates the **Local project folder path** currently in settings.
 - Open the command palette and search "Validate Path command"
 - A message indicating the validity of the path will be displayed 
@@ -42,7 +63,7 @@ Validates the **Local project folder path** currently in settings.
 4. Since the `.md` file in your project will have the same filename as the Obsidian note it was generated from, I recommend using hyphens instead of spaces when naming files.
 	- Ex. `Cool Blog Post.md` becomes `Cool-Blog-Post.md`
 
-## Say Thanks
+## Support Development
 Hi, I'm Alexa. A developer, college student, and YouTuber.
 
 I build tools and create content because I love connecting with people. If you feel compelled to buy me a coffee that would be greatly appreciated! 🤗
