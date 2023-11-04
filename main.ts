@@ -144,8 +144,9 @@ class PathModal extends FuzzySuggestModal<string> {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 
 		const paths = fs.readdirSync(this.currPath).filter((p) => {
-			const fullPath = path.resolve(this.currPath, p)
-			const stats = fs.statSync(fullPath, { throwIfNoEntry: false });
+			const fullPath = path.resolve(this.currPath, p);
+			let stats;
+			try { stats = fs.statSync(fullPath, { throwIfNoEntry: false }); } catch (e) { return false; }
 			if (stats === undefined) return false;
 			return (
 				(stats.isDirectory()
