@@ -1,7 +1,7 @@
-import { App, Editor, FuzzySuggestModal, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, FuzzySuggestModal, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from "obsidian";
 import * as fs from "fs";
 import * as path from "path";
-import * as os from 'os';
+import * as os from "os";
 
 interface MarkdownBloggerSettings {
 	projectFolder: string;
@@ -9,7 +9,7 @@ interface MarkdownBloggerSettings {
 }
 
 const DEFAULT_SETTINGS: MarkdownBloggerSettings = {
-	projectFolder: '',
+	projectFolder: "",
 	showHiddenFolders: false
 
 }
@@ -24,8 +24,8 @@ export default class MarkdownBlogger extends Plugin {
 		await this.loadSettings();
 
 		this.addCommand({
-			id: 'validate-path',
-			name: 'Validate path',
+			id: "validate-path",
+			name: "Validate path",
 			editorCallback: (editor: Editor, view: MarkdownView) => {
 				
 				const { projectFolder } = this.settings;
@@ -38,8 +38,8 @@ export default class MarkdownBlogger extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'push-md',
-			name: 'Push markdown',
+			id: "push-md",
+			name: "Push markdown",
 			editorCallback: (editor: Editor, view: MarkdownView) => {
 				
 				const { projectFolder } = this.settings;
@@ -50,7 +50,7 @@ export default class MarkdownBlogger extends Plugin {
 				const text = editor.getDoc().getValue();
 				const projectBlogPath = path.resolve(this.settings.projectFolder, view.file.name);
 				try {
-					fs.writeFileSync(`${projectBlogPath}`, text, {encoding: 'utf8'});
+					fs.writeFileSync(`${projectBlogPath}`, text, {encoding: "utf8"});
 					new Notice(`Your file has been pushed! At ${projectBlogPath}`);
 				} catch (err) {
 					new Notice(err.message);
@@ -59,16 +59,17 @@ export default class MarkdownBlogger extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'pull-md',
-			name: 'Pull markdown',
+			id: "pull-md",
+			name: "Pull markdown",
 			editorCheckCallback: (checking: boolean, editor: Editor, view: MarkdownView) => {
 				const projectBlogPath = path.resolve(this.settings.projectFolder, view.file.name);
 			
 				if (fs.existsSync(projectBlogPath)) {
 					if (!checking) {
 						try {
-							const file = fs.readFileSync(projectBlogPath, 'utf8');
+							const file = fs.readFileSync(projectBlogPath, "utf8");
 							editor.getDoc().setValue(file);
+							new Notice(`Your file has been pulled! From ${projectBlogPath}`);
 						} catch (err) {
 							new Notice(err.message);
 						}
@@ -80,16 +81,16 @@ export default class MarkdownBlogger extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'push-custom-path-md',
-			name: 'Push to custom path',
+			id: "push-custom-path-md",
+			name: "Push to custom path",
 			editorCallback: (editor: Editor, view: MarkdownView) => {
 				new PathModal(this.app, this.settings, Action.Push).open();
 			}
 		});
 
 		this.addCommand({
-			id: 'pull-custom-path',
-			name: 'Pull from custom path',
+			id: "pull-custom-path",
+			name: "Pull from custom path",
 			editorCallback: (editor: Editor, view: MarkdownView) => {
 				new PathModal(this.app, this.settings, Action.Pull).open()
 			}
@@ -144,7 +145,8 @@ class PathModal extends FuzzySuggestModal<string> {
 
 		const paths = fs.readdirSync(this.currPath).filter((p) => {
 			const fullPath = path.resolve(this.currPath, p)
-			const stats = fs.statSync(fullPath);
+			const stats = fs.statSync(fullPath, { throwIfNoEntry: false });
+			if (stats === undefined) return false;
 			return (
 				(stats.isDirectory()
 				|| (path.basename(fullPath) === view?.file.name))
@@ -173,15 +175,16 @@ class PathModal extends FuzzySuggestModal<string> {
 				const filePath = path.resolve(this.currPath, view.file.name);
 				if (this.action === Action.Push) {
 					try {
-						fs.writeFileSync(`${filePath}`, text, {encoding: 'utf8'});
+						fs.writeFileSync(`${filePath}`, text, {encoding: "utf8"});
 						new Notice(`Your file has been pushed! At ${filePath}`);
 					} catch (err) {
 						new Notice(err.message);
 					}
 				} else if (this.action === Action.Pull) {
 					try {
-						const file = fs.readFileSync(filePath, 'utf8');
+						const file = fs.readFileSync(filePath, "utf8");
 						view.editor.getDoc().setValue(file);
+						new Notice(`Your file has been pulled! From ${filePath}`);
 					} catch (err) {
 						new Notice(err.message);
 					}
@@ -193,15 +196,16 @@ class PathModal extends FuzzySuggestModal<string> {
 			if (this.action === Action.Push) {
 				const text = view.editor.getDoc().getValue();
 				try {
-					fs.writeFileSync(`${filePath}`, text, {encoding: 'utf8'});
+					fs.writeFileSync(`${filePath}`, text, {encoding: "utf8"});
 					new Notice(`Your file has been pushed! At ${filePath}`);
 				} catch (err) {
 					new Notice(err.message);
 				}
 			} else if (this.action === Action.Pull) {
 				try {
-					const file = fs.readFileSync(filePath, 'utf8');
+					const file = fs.readFileSync(filePath, "utf8");
 					view.editor.getDoc().setValue(file);
+					new Notice(`Your file has been pulled! From ${filePath}`);
 				} catch (err) {
 					new Notice(err.message);
 				}
@@ -227,18 +231,19 @@ class MarkdownBloggerSettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		containerEl.createEl('h2', {text: 'Settings for Obsidian Markdown Blogger.'});
+		containerEl.createEl("h2", {text: "Settings for Obsidian Markdown Blogger."});
 
 		new Setting(containerEl)
-			.setName('Local project folder path')
-			.setDesc('The local project folder for your blog, portfolio, or static site. Must be an absolute path.')
+			.setName("Local project folder path")
+			.setDesc("The local project folder for your blog, portfolio, or static site. Must be an absolute path.")
 			.addText(text => text
-				.setPlaceholder('/Users/johnsample/projects/astro-blog/collections/')
+				.setPlaceholder("/Users/johnsample/projects/astro-blog/collections/")
 				.setValue(this.plugin.settings.projectFolder)
 				.onChange(async (value) => {
 					this.plugin.settings.projectFolder = value;
 					await this.plugin.saveSettings();
-				}));
+				})
+			);
 		new Setting(containerEl).setName("Show hidden folders")
 			.setDesc("Show hidden folders when pushing to a custom path")
 			.addToggle(cb => cb
@@ -246,7 +251,7 @@ class MarkdownBloggerSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.showHiddenFolders = value;
 					await this.plugin.saveSettings();
-				}));
-				
+				})
+			);				
 	}
 }
