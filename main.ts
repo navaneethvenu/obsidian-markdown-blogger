@@ -1,13 +1,16 @@
 import { App, Editor, FuzzySuggestModal, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import * as fs from "fs";
 import * as path from "path";
+import * as os from 'os';
 
 interface MarkdownBloggerSettings {
 	projectFolder: string;
+	showHiddenFolders: boolean;
 }
 
 const DEFAULT_SETTINGS: MarkdownBloggerSettings = {
-	projectFolder: ''
+	projectFolder: '',
+	showHiddenFolders: false
 
 }
 
@@ -74,11 +77,10 @@ export default class MarkdownBlogger extends Plugin {
 		});
 
 		this.addCommand({
-			id: 'push-to-path-md',
-			name: 'Push to path',
+			id: 'push-custom-path-md',
+			name: 'Push to custom path',
 			editorCallback: (editor: Editor, view: MarkdownView) => {
-				new PathModal(this.app).open();
-				console.log("hello");
+				new PathModal(this.app, this.settings).open();
 			}
 		});
 
@@ -115,42 +117,50 @@ class ErrorModal extends Modal {
 	}
 }
 
-
-// const ALL_PATHS = [
-// 	{
-// 		name: "alexa"
-// 	},
-// 	{
-// 		name: "documents"
-// 	}
-// ]
 class PathModal extends FuzzySuggestModal<string> {
-	currPath = "/";
+	currPath = os.homedir();
+	settings: MarkdownBloggerSettings
+
+	constructor(app: App, settings: MarkdownBloggerSettings) {
+		super(app);
+		this.settings = settings;
+	}
+	
 	getItems(): string[] {
-		const paths = fs.readdirSync(this.currPath).filter((path) => path[0] !== ".");
+		const paths = fs.readdirSync(this.currPath).filter((p) => {
+			const stats = fs.statSync(path.resolve(this.currPath, p));
+			return stats.isDirectory() && (p[0] !== "." || this.settings.showHiddenFolders);
+		});
 		
 		paths.push("..");
-		paths.push("Enter");
+		paths.push("Select");
 
 		return paths;
 	}
-	getItemText(path: string): string {
-		return path;
+	getItemText(dir: string): string {
+		return dir;
 	}
-	onChooseItem(path: string, evt: MouseEvent | KeyboardEvent) {
-		if (path === "..") {
-			const pathArr = this.currPath.split("/");
-			console.log("1", pathArr)
-			pathArr.pop();
-			pathArr.pop();
-			console.log("2", pathArr)
-			this.currPath = pathArr.join("/");
-			console.log(this.currPath);
-		} else if (path === "Enter") {
-			new Notice(this.currPath);
+	onChooseItem(dir: string, evt: MouseEvent | KeyboardEvent) {
+		if (dir === "Select") {
+			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (view) {
+				if (!fs.existsSync(path.resolve(this.currPath))) {
+					new ErrorModal(this.app).open();
+					return;
+				}
+
+				const text = view.editor.getDoc().getValue();
+				const filePath = path.resolve(this.currPath, view.file.name);
+				try {
+					fs.writeFileSync(`${filePath}`, text, {encoding: 'utf8'});
+					new Notice(`Your file has been pushed! At ${filePath}`);
+				} catch (err) {
+					new Notice(err.message);
+				}
+			}
 			return;
 		} else {
-			this.currPath += `${path}/`;
+			this.currPath = path.normalize(path.join(this.currPath, dir));
 		}
 		this.open();
 	}
@@ -181,5 +191,14 @@ class MarkdownBloggerSettingTab extends PluginSettingTab {
 					this.plugin.settings.projectFolder = value;
 					await this.plugin.saveSettings();
 				}));
+		new Setting(containerEl).setName("Show hidden folders")
+			.setDesc("Show hidden folders when pushing to a custom path")
+			.addToggle(cb => cb
+				.setValue(this.plugin.settings.showHiddenFolders)
+				.onChange(async (value) => {
+					this.plugin.settings.showHiddenFolders = value;
+					await this.plugin.saveSettings();
+				}));
+				
 	}
 }
