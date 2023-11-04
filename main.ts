@@ -13,7 +13,10 @@ const DEFAULT_SETTINGS: MarkdownBloggerSettings = {
 	showHiddenFolders: false
 
 }
-
+enum Action {
+	Push,
+	Pull
+}
 export default class MarkdownBlogger extends Plugin {
 	settings: MarkdownBloggerSettings;
 
@@ -80,9 +83,17 @@ export default class MarkdownBlogger extends Plugin {
 			id: 'push-custom-path-md',
 			name: 'Push to custom path',
 			editorCallback: (editor: Editor, view: MarkdownView) => {
-				new PathModal(this.app, this.settings).open();
+				new PathModal(this.app, this.settings, Action.Push).open();
 			}
 		});
+
+		this.addCommand({
+			id: 'pull-custom-path',
+			name: 'Pull from custom path',
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				new PathModal(this.app, this.settings, Action.Pull).open()
+			}
+		})
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new MarkdownBloggerSettingTab(this.app, this));
@@ -120,16 +131,25 @@ class ErrorModal extends Modal {
 class PathModal extends FuzzySuggestModal<string> {
 	currPath = os.homedir();
 	settings: MarkdownBloggerSettings
+	action: Action
 
-	constructor(app: App, settings: MarkdownBloggerSettings) {
+	constructor(app: App, settings: MarkdownBloggerSettings, action: Action) {
 		super(app);
 		this.settings = settings;
+		this.action = action;
 	}
 	
 	getItems(): string[] {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+
 		const paths = fs.readdirSync(this.currPath).filter((p) => {
-			const stats = fs.statSync(path.resolve(this.currPath, p));
-			return stats.isDirectory() && (p[0] !== "." || this.settings.showHiddenFolders);
+			const fullPath = path.resolve(this.currPath, p)
+			const stats = fs.statSync(fullPath);
+			return (
+				(stats.isDirectory()
+				|| (path.basename(fullPath) === view?.file.name))
+				&& (p[0] !== "." || this.settings.showHiddenFolders)
+			);
 		});
 		
 		paths.push("..");
@@ -141,8 +161,8 @@ class PathModal extends FuzzySuggestModal<string> {
 		return dir;
 	}
 	onChooseItem(dir: string, evt: MouseEvent | KeyboardEvent) {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (dir === "Select") {
-			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 			if (view) {
 				if (!fs.existsSync(path.resolve(this.currPath))) {
 					new ErrorModal(this.app).open();
@@ -151,9 +171,37 @@ class PathModal extends FuzzySuggestModal<string> {
 
 				const text = view.editor.getDoc().getValue();
 				const filePath = path.resolve(this.currPath, view.file.name);
+				if (this.action === Action.Push) {
+					try {
+						fs.writeFileSync(`${filePath}`, text, {encoding: 'utf8'});
+						new Notice(`Your file has been pushed! At ${filePath}`);
+					} catch (err) {
+						new Notice(err.message);
+					}
+				} else if (this.action === Action.Pull) {
+					try {
+						const file = fs.readFileSync(filePath, 'utf8');
+						view.editor.getDoc().setValue(file);
+					} catch (err) {
+						new Notice(err.message);
+					}
+				}
+			}
+			return;
+		} else if (view && dir === view.file.name) {
+			const filePath = path.resolve(this.currPath, view.file.name);
+			if (this.action === Action.Push) {
+				const text = view.editor.getDoc().getValue();
 				try {
 					fs.writeFileSync(`${filePath}`, text, {encoding: 'utf8'});
 					new Notice(`Your file has been pushed! At ${filePath}`);
+				} catch (err) {
+					new Notice(err.message);
+				}
+			} else if (this.action === Action.Pull) {
+				try {
+					const file = fs.readFileSync(filePath, 'utf8');
+					view.editor.getDoc().setValue(file);
 				} catch (err) {
 					new Notice(err.message);
 				}
