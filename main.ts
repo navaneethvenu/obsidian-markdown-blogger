@@ -92,13 +92,13 @@ export default class MarkdownBlogger extends Plugin {
 
 				const parentFolder = path.dirname(activeFilePath);
 
-				new Notice(`parentFolder: ${path.basename(parentFolder)}`);
+				// new Notice(`parentFolder: ${path.basename(parentFolder)}`);
 
 				const targetFolder = path.resolve(
 					projectFolder,
 					path.basename(parentFolder)
 				);
-				new Notice(`parentFolder: ${targetFolder}`);
+				// new Notice(`parentFolder: ${targetFolder}`);
 
 				const completeParentFolder = path.join(basePath, parentFolder);
 
@@ -110,7 +110,6 @@ export default class MarkdownBlogger extends Plugin {
 
 					// Copy contents from the parent folder to the target folder
 					fs.readdirSync(completeParentFolder).forEach((file) => {
-						new Notice(`source and dest: `);
 						const srcPath = path.join(completeParentFolder, file);
 						const destPath = path.join(targetFolder, file);
 
@@ -129,11 +128,65 @@ export default class MarkdownBlogger extends Plugin {
 
 							// Replace image paths with custom URL prefix
 							content = content.replace(
-								/!\[\]\((images\/[^\)]+)\)/g,
-								`![](${customURLPrefix}$1)`
+								/!\[[^\]]*\]\((images\/[^\)]+)\)/g,
+								(match, p1) => {
+									const customURLPrefix = `/work/${path.basename(
+										parentFolder
+									)}/`;
+									return match.replace(
+										p1,
+										`${customURLPrefix}${p1}`
+									);
+								}
 							);
 
-							new Notice(`replaced ${content}`);
+							// Append/modify the front matter for cover_url
+							const frontMatterMatch = content.match(
+								/^---\n([\s\S]*?)\n---/
+							);
+							let frontMatter = frontMatterMatch
+								? frontMatterMatch[1]
+								: "";
+							let body = frontMatterMatch
+								? content.slice(frontMatterMatch[0].length)
+								: content;
+
+							let updatedFrontMatter = frontMatter;
+
+							const coverUrlMatch =
+								frontMatter.match(/cover_url:\s*(.*)/);
+							if (coverUrlMatch) {
+								let coverUrl = coverUrlMatch[1].trim();
+								if (
+									!coverUrl.startsWith("http") &&
+									!coverUrl.startsWith("/")
+								) {
+									coverUrl = path.join(
+										customURLPrefix,
+										coverUrl.replace(/^"\[\[|\]\]"$/g, "")
+									);
+								}
+								updatedFrontMatter = frontMatter.replace(
+									/cover_url:\s*".*?"/,
+									`cover_url: ${coverUrl}`
+								);
+								// new Notice(
+								// 	"hh" + coverUrl + "\n" + updatedFrontMatter
+								// );
+							} else {
+								// Add cover_url if not present
+								updatedFrontMatter += `\ncover_url: `;
+							}
+
+							// Combine the updated front matter and body
+							content = `---\n${updatedFrontMatter}\n---\n${body}`;
+
+							//add wrappers around content
+							content = wrapWithCustomComponent(content);
+
+							// new Notice(
+							// 	`Processed front matter: ${updatedFrontMatter}`
+							// );
 
 							// Write the modified content to the target folder
 							fs.writeFileSync(destPath, content, {
@@ -381,4 +434,54 @@ class MarkdownBloggerSettingTab extends PluginSettingTab {
 					})
 			);
 	}
+}
+
+function wrapWithCustomComponent(
+	content: string,
+	wrapper: string = "ContentWrapper"
+): string {
+	// Regex to identify blocks that shouldn't be wrapped
+	const frontMatterRegex = /^---[\s\S]*?---$/m;
+	const imageRegex = /^!\[.*?\]\(.*?\)$/m;
+	const componentRegex = /<([a-zA-Z0-9-]+)([^>]*?)(\/?)>/; // Matches custom tags (including self-closing)
+
+	// Split content into blocks by double newlines
+	const blocks = content.split(/\n\s*\n/);
+	let result: string[] = [];
+
+	let currentBlock = "";
+	for (const block of blocks) {
+		const trimmedBlock = block.trim();
+
+		// Check if the block contains front matter, images, or custom components
+		if (
+			frontMatterRegex.test(trimmedBlock) ||
+			imageRegex.test(trimmedBlock) ||
+			componentRegex.test(trimmedBlock) // Check for any custom component
+		) {
+			// If we have a current block, wrap and push it before adding new content
+			if (currentBlock) {
+				result.push(
+					`<${wrapper}>\n${currentBlock.trim()}\n</${wrapper}>`
+				);
+				currentBlock = "";
+			}
+			// Leave these blocks untouched (custom components, front matter, images)
+			result.push(trimmedBlock);
+		} else {
+			// Group consecutive paragraphs without wrapping them individually
+			if (currentBlock) {
+				currentBlock += "\n\n" + trimmedBlock;
+			} else {
+				currentBlock = trimmedBlock;
+			}
+		}
+	}
+
+	// Push any remaining block
+	if (currentBlock) {
+		result.push(`<${wrapper}>\n${currentBlock.trim()}\n</${wrapper}>`);
+	}
+
+	return result.join("\n\n");
 }
