@@ -438,12 +438,14 @@ class MarkdownBloggerSettingTab extends PluginSettingTab {
 
 function wrapWithCustomComponent(
 	content: string,
-	wrapper: string = "ContentWrapper"
+	wrapper: string = "ContentWrapper",
+	headingWrapper: string = "HeadingWrapper"
 ): string {
 	// Regex to identify blocks that shouldn't be wrapped
 	const frontMatterRegex = /^---[\s\S]*?---$/m;
 	const imageRegex = /^!\[.*?\]\(.*?\)$/m;
 	const componentRegex = /<([a-zA-Z0-9-]+)([^>]*?)(\/?)>/; // Matches custom tags (including self-closing)
+	const headingRegex = /^(#{1,2})\s+(.*)$/m; // Matches h1 (#) and h2 (##)
 
 	// Split content into blocks by double newlines
 	const blocks = content.split(/\n\s*\n/);
@@ -453,11 +455,31 @@ function wrapWithCustomComponent(
 	for (const block of blocks) {
 		const trimmedBlock = block.trim();
 
+		// Check if the block is a heading
+		const headingMatch = headingRegex.exec(trimmedBlock);
+		if (headingMatch) {
+			const hashes = headingMatch[1]; // # or ##
+			const headingContent = headingMatch[2]; // Heading text
+			const headingTag = `<${headingWrapper}>\n${hashes} ${headingContent}\n</${headingWrapper}>`;
+
+			// Push any current block before adding the heading
+			if (currentBlock) {
+				result.push(
+					`<${wrapper}>\n${currentBlock.trim()}\n</${wrapper}>`
+				);
+				currentBlock = "";
+			}
+
+			// Add the heading wrapper
+			result.push(headingTag);
+			continue;
+		}
+
 		// Check if the block contains front matter, images, or custom components
 		if (
 			frontMatterRegex.test(trimmedBlock) ||
 			imageRegex.test(trimmedBlock) ||
-			componentRegex.test(trimmedBlock) // Check for any custom component
+			componentRegex.test(trimmedBlock)
 		) {
 			// If we have a current block, wrap and push it before adding new content
 			if (currentBlock) {
