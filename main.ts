@@ -189,7 +189,15 @@ export default class MarkdownBlogger extends Plugin {
 							// );
 
 							// Write the modified content to the target folder
-							fs.writeFileSync(destPath, content, {
+							let targetExtension =
+								path.extname(file) === ".mdx" ? ".mdx" : ".mdx";
+							let updatedDestPath = path.join(
+								path.dirname(destPath),
+								path.basename(file, path.extname(file)) +
+									targetExtension
+							);
+
+							fs.writeFileSync(updatedDestPath, content, {
 								encoding: "utf8",
 							});
 						} else {
