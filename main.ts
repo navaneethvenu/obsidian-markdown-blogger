@@ -13,19 +13,29 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 
+interface PathMapping {
+	name: string;
+	sourcePath: string;
+	destinationPath: string;
+}
 interface MarkdownBloggerSettings {
-	projectFolder: string;
+	pathMappings: PathMapping[];
+	basePath: string;
+	defaultProjectFolder: string;
 	showHiddenFolders: boolean;
 }
 
 const DEFAULT_SETTINGS: MarkdownBloggerSettings = {
-	projectFolder: "",
+	pathMappings: [],
+	basePath: "",
+	defaultProjectFolder: "",
 	showHiddenFolders: false,
 };
 enum Action {
 	Push,
 	Pull,
 }
+
 export default class MarkdownBlogger extends Plugin {
 	settings: MarkdownBloggerSettings;
 
@@ -36,12 +46,8 @@ export default class MarkdownBlogger extends Plugin {
 			id: "validate-path",
 			name: "Validate path",
 			editorCallback: (editor: Editor, view: MarkdownView) => {
-				const { projectFolder } = this.settings;
-				if (!fs.existsSync(projectFolder)) {
-					new ErrorModal(this.app).open();
-					return;
-				}
-				new Notice(`Valid path: ${this.settings.projectFolder}`);
+				const { defaultProjectFolder: projectFolder } = this.settings;
+				validatePath(projectFolder);
 			},
 		});
 
@@ -49,14 +55,14 @@ export default class MarkdownBlogger extends Plugin {
 			id: "push-md",
 			name: "Push markdown",
 			editorCallback: (editor: Editor, view: MarkdownView) => {
-				const { projectFolder } = this.settings;
+				const { defaultProjectFolder: projectFolder } = this.settings;
 				if (!fs.existsSync(projectFolder)) {
 					new ErrorModal(this.app).open();
 					return;
 				}
 				const text = editor.getDoc().getValue();
 				const projectBlogPath = path.resolve(
-					this.settings.projectFolder,
+					this.settings.defaultProjectFolder,
 					view.file!.name
 				);
 				try {
@@ -76,138 +82,97 @@ export default class MarkdownBlogger extends Plugin {
 			id: "push-md-folder",
 			name: "Push folder",
 			editorCallback: (editor: Editor, view: MarkdownView) => {
-				const basePath = "/Users/navaneethvenu/Documents/Vital/";
-				const { projectFolder } = this.settings;
+				const {
+					defaultProjectFolder: projectFolder,
+					basePath,
+					pathMappings,
+				} = this.settings;
 
-				if (!fs.existsSync(projectFolder)) {
-					new ErrorModal(this.app).open();
-					return;
-				}
+				validatePath(projectFolder, false);
 
+				// Check if there is an active file
 				const activeFilePath = view.file?.path;
 				if (!activeFilePath) {
 					new Notice("No active file found.");
 					return;
 				}
 
-				const parentFolder = path.dirname(activeFilePath);
+				const parentFolderPath = path.dirname(activeFilePath);
 
-				// new Notice(`parentFolder: ${path.basename(parentFolder)}`);
-
-				const targetFolder = path.resolve(
+				let destinationFolderPath = path.resolve(
 					projectFolder,
-					path.basename(parentFolder)
+					path.basename(parentFolderPath)
 				);
-				// new Notice(`parentFolder: ${targetFolder}`);
 
-				const completeParentFolder = path.join(basePath, parentFolder);
+				const completeParentFolderPath = path.join(
+					basePath,
+					parentFolderPath
+				);
+
+				new Notice(path.dirname(completeParentFolderPath));
+
+				const pathMapping = pathMappings.find(
+					(mapping) =>
+						mapping.sourcePath ===
+						path.dirname(completeParentFolderPath)
+				);
+
+				if (pathMapping) {
+					validatePath(pathMapping.destinationPath, false);
+
+					destinationFolderPath = path.resolve(
+						pathMapping.destinationPath,
+						path.basename(parentFolderPath)
+					);
+				}
 
 				try {
-					// Ensure the target folder exists
-					if (!fs.existsSync(targetFolder)) {
-						fs.mkdirSync(targetFolder, { recursive: true });
+					// Create the destination folder if it doesn't exist
+					if (!fs.existsSync(destinationFolderPath)) {
+						fs.mkdirSync(destinationFolderPath, {
+							recursive: true,
+						});
 					}
 
 					// Copy contents from the parent folder to the target folder
-					fs.readdirSync(completeParentFolder).forEach((file) => {
-						const srcPath = path.join(completeParentFolder, file);
-						const destPath = path.join(targetFolder, file);
+					fs.readdirSync(completeParentFolderPath).forEach((file) => {
+						const sourceFilePath = path.join(
+							completeParentFolderPath,
+							file
+						);
 
-						if (fs.lstatSync(srcPath).isDirectory()) {
+						const destinationFilePath = path.join(
+							destinationFolderPath,
+							file
+						);
+
+						if (fs.lstatSync(sourceFilePath).isDirectory()) {
 							// Recursively copy subdirectories
-							fs.cpSync(srcPath, destPath, { recursive: true });
+							fs.cpSync(sourceFilePath, destinationFilePath, {
+								recursive: true,
+							});
 						} else if (
 							file.endsWith(".md") ||
 							file.endsWith(".mdx")
 						) {
 							// Process markdown files
-							let content = fs.readFileSync(srcPath, "utf8");
-							const customURLPrefix = `/work/${path.basename(
-								parentFolder
-							)}/`;
-
-							// Replace image paths with custom URL prefix
-							content = content.replace(
-								/!\[[^\]]*\]\((images\/[^\)]+)\)/g,
-								(match, p1) => {
-									const customURLPrefix = `/work/${path.basename(
-										parentFolder
-									)}/`;
-									return match.replace(
-										p1,
-										`${customURLPrefix}${p1}`
-									);
-								}
+							processMDFile(
+								sourceFilePath,
+								parentFolderPath,
+								file,
+								destinationFilePath
 							);
-
-							// Append/modify the front matter for cover_url
-							const frontMatterMatch = content.match(
-								/^---\n([\s\S]*?)\n---/
-							);
-							let frontMatter = frontMatterMatch
-								? frontMatterMatch[1]
-								: "";
-							let body = frontMatterMatch
-								? content.slice(frontMatterMatch[0].length)
-								: content;
-
-							let updatedFrontMatter = frontMatter;
-
-							const coverUrlMatch =
-								frontMatter.match(/cover_url:\s*(.*)/);
-							if (coverUrlMatch) {
-								let coverUrl = coverUrlMatch[1].trim();
-								if (
-									!coverUrl.startsWith("http") &&
-									!coverUrl.startsWith("/")
-								) {
-									coverUrl = path.join(
-										customURLPrefix,
-										coverUrl.replace(/^"\[\[|\]\]"$/g, "")
-									);
-								}
-								updatedFrontMatter = frontMatter.replace(
-									/cover_url:\s*".*?"/,
-									`cover_url: ${coverUrl}`
-								);
-								// new Notice(
-								// 	"hh" + coverUrl + "\n" + updatedFrontMatter
-								// );
-							} else {
-								// Add cover_url if not present
-								updatedFrontMatter += `\ncover_url: `;
-							}
-
-							// Combine the updated front matter and body
-							content = `---\n${updatedFrontMatter}\n---\n${body}`;
-
-							//add wrappers around content
-							content = wrapWithCustomComponent(content);
-
-							// new Notice(
-							// 	`Processed front matter: ${updatedFrontMatter}`
-							// );
-
-							// Write the modified content to the target folder
-							let targetExtension =
-								path.extname(file) === ".mdx" ? ".mdx" : ".mdx";
-							let updatedDestPath = path.join(
-								path.dirname(destPath),
-								path.basename(file, path.extname(file)) +
-									targetExtension
-							);
-
-							fs.writeFileSync(updatedDestPath, content, {
-								encoding: "utf8",
-							});
 						} else {
 							// Copy files
-							fs.copyFileSync(srcPath, destPath);
+							fs.copyFileSync(
+								sourceFilePath,
+								destinationFilePath
+							);
 						}
 					});
 
 					new Notice(
-						`Your folder has been pushed! At ${targetFolder}`
+						`Your folder has been pushed! At ${destinationFolderPath}`
 					);
 				} catch (err) {
 					new Notice(`Ergror: ${err.message}`);
@@ -219,7 +184,7 @@ export default class MarkdownBlogger extends Plugin {
 			id: "pull-md",
 			name: "Pull markdown",
 			editorCallback: (editor: Editor, view: MarkdownView) => {
-				const { projectFolder } = this.settings;
+				const { defaultProjectFolder: projectFolder } = this.settings;
 				if (!fs.existsSync(projectFolder)) {
 					new ErrorModal(this.app).open();
 					return;
@@ -415,7 +380,24 @@ class MarkdownBloggerSettingTab extends PluginSettingTab {
 		});
 
 		new Setting(containerEl)
-			.setName("Local project folder path")
+			.setName("Base Path to your Obsidian Vault")
+			.setDesc(
+				"The local project folder for your obsidian vault. Must be an absolute path."
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder(
+						"/Users/johnsample/projects/astro-blog/collections/"
+					)
+					.setValue(this.plugin.settings.basePath)
+					.onChange(async (value) => {
+						this.plugin.settings.basePath = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Default Local project folder path")
 			.setDesc(
 				"The local project folder for your blog, portfolio, or static site. Must be an absolute path."
 			)
@@ -424,12 +406,71 @@ class MarkdownBloggerSettingTab extends PluginSettingTab {
 					.setPlaceholder(
 						"/Users/johnsample/projects/astro-blog/collections/"
 					)
-					.setValue(this.plugin.settings.projectFolder)
+					.setValue(this.plugin.settings.defaultProjectFolder)
 					.onChange(async (value) => {
-						this.plugin.settings.projectFolder = value;
+						this.plugin.settings.defaultProjectFolder = value;
 						await this.plugin.saveSettings();
 					})
 			);
+
+		// Add a section for path mappings
+		containerEl.createEl("h3", { text: "Path Mappings" });
+
+		// Add button to create new mapping
+		new Setting(containerEl).addButton((btn) =>
+			btn.setButtonText("Add New Mapping").onClick(async () => {
+				this.plugin.settings.pathMappings.push({
+					name: `Mapping ${
+						this.plugin.settings.pathMappings.length + 1
+					}`,
+					sourcePath: "",
+					destinationPath: "",
+				});
+				await this.plugin.saveSettings();
+				this.display();
+			})
+		);
+
+		// Display existing mappings
+		// Display existing mappings
+		this.plugin.settings.pathMappings.forEach((mapping, index) => {
+			const mappingContainer = containerEl.createDiv();
+			mappingContainer.addClass("path-mapping-container");
+
+			const setting = new Setting(mappingContainer)
+				.addText((text) =>
+					text
+						.setPlaceholder("Source path")
+						.setValue(mapping.sourcePath)
+						.onChange(async (value) => {
+							this.plugin.settings.pathMappings[
+								index
+							].sourcePath = value;
+							await this.plugin.saveSettings();
+						})
+				)
+				.addText((text) =>
+					text
+						.setPlaceholder("Destination path")
+						.setValue(mapping.destinationPath)
+						.onChange(async (value) => {
+							this.plugin.settings.pathMappings[
+								index
+							].destinationPath = value;
+							await this.plugin.saveSettings();
+						})
+				)
+
+				.addExtraButton((cb) => {
+					cb.setIcon("cross")
+						.setTooltip("Delete")
+						.onClick(async () => {
+							this.plugin.settings.pathMappings.splice(index, 1);
+							await this.plugin.saveSettings();
+							this.display();
+						});
+				});
+		});
 		new Setting(containerEl)
 			.setName("Show hidden folders")
 			.setDesc("Show hidden folders when pushing to a custom path")
@@ -442,6 +483,76 @@ class MarkdownBloggerSettingTab extends PluginSettingTab {
 					})
 			);
 	}
+}
+
+function validatePath(path: string, showNotice?: boolean) {
+	if (!fs.existsSync(path)) {
+		new ErrorModal(this.app).open();
+		throw new Error(`Path does not exist: ${path}`);
+	}
+	if (showNotice ?? true) new Notice(`Valid path: ${path}`);
+}
+
+function processMDFile(
+	sourceFilePath: string,
+	parentFolderPath: string,
+	file: string,
+	destinationFilePath: string
+) {
+	let content = fs.readFileSync(sourceFilePath, "utf8");
+	const customURLPrefix = `/work/${path.basename(parentFolderPath)}/`;
+
+	// Replace image paths with custom URL prefix
+	content = content.replace(
+		/!\[[^\]]*\]\((images\/[^\)]+)\)/g,
+		(match, p1) => {
+			const customURLPrefix = `/work/${path.basename(parentFolderPath)}/`;
+			return match.replace(p1, `${customURLPrefix}${p1}`);
+		}
+	);
+
+	// Append/modify the front matter for cover_url
+	const frontMatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+	let frontMatter = frontMatterMatch ? frontMatterMatch[1] : "";
+	let body = frontMatterMatch
+		? content.slice(frontMatterMatch[0].length)
+		: content;
+
+	let updatedFrontMatter = frontMatter;
+
+	const coverUrlMatch = frontMatter.match(/cover_url:\s*(.*)/);
+	if (coverUrlMatch) {
+		let coverUrl = coverUrlMatch[1].trim();
+		if (!coverUrl.startsWith("http") && !coverUrl.startsWith("/")) {
+			coverUrl = path.join(
+				customURLPrefix,
+				coverUrl.replace(/^"\[\[|\]\]"$/g, "")
+			);
+		}
+		updatedFrontMatter = frontMatter.replace(
+			/cover_url:\s*".*?"/,
+			`cover_url: ${coverUrl}`
+		);
+	} else {
+		updatedFrontMatter += `\ncover_url: `;
+	}
+
+	// Combine the updated front matter and body
+	content = `---\n${updatedFrontMatter}\n---\n${body}`;
+
+	//add wrappers around content
+	content = wrapWithCustomComponent(content);
+
+	// Write the modified content to the target folder
+	let targetExtension = ".mdx";
+	let updatedDestinationPath = path.join(
+		path.dirname(destinationFilePath),
+		path.basename(file, path.extname(file)) + targetExtension
+	);
+
+	fs.writeFileSync(updatedDestinationPath, content, {
+		encoding: "utf8",
+	});
 }
 
 function wrapWithCustomComponent(
