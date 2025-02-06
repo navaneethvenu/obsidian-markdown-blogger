@@ -94,10 +94,10 @@ export default class MarkdownBlogger extends Plugin {
 				const activeFilePath = view.file?.path;
 				if (!activeFilePath) {
 					new Notice("No active file found.");
-					return;
+					return; //Website/Project/Attendo/Attendo
 				}
 
-				const parentFolderPath = path.dirname(activeFilePath);
+				const parentFolderPath = path.dirname(activeFilePath); //Website/Project/Attendo
 
 				let destinationFolderPath = path.resolve(
 					projectFolder,
@@ -108,8 +108,7 @@ export default class MarkdownBlogger extends Plugin {
 					basePath,
 					parentFolderPath
 				);
-
-				new Notice(path.dirname(completeParentFolderPath));
+				//[..]/Website/Project/Attendo/Attendo
 
 				const pathMapping = pathMappings.find(
 					(mapping) =>
@@ -123,60 +122,91 @@ export default class MarkdownBlogger extends Plugin {
 					destinationFolderPath = path.resolve(
 						pathMapping.destinationPath,
 						path.basename(parentFolderPath)
-					);
+					); //dest/Attendo
 				}
 
-				try {
-					// Create the destination folder if it doesn't exist
-					if (!fs.existsSync(destinationFolderPath)) {
-						fs.mkdirSync(destinationFolderPath, {
-							recursive: true,
-						});
-					}
+				pushFolder(
+					parentFolderPath,
+					completeParentFolderPath,
+					destinationFolderPath
+				);
 
-					// Copy contents from the parent folder to the target folder
-					fs.readdirSync(completeParentFolderPath).forEach((file) => {
-						const sourceFilePath = path.join(
-							completeParentFolderPath,
-							file
+				new Notice(
+					`Your folder has been pushed! At ${destinationFolderPath}`
+				);
+			},
+		});
+
+		this.addCommand({
+			id: "push-all-md-folder",
+			name: "Push all folders",
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				const { defaultProjectFolder, basePath, pathMappings } =
+					this.settings;
+
+				validatePath(defaultProjectFolder, false);
+
+				// Check if there is an active file
+				const activeFilePath = view.file?.path; //Website/Project/Attendo/Attendo
+				if (!activeFilePath) {
+					new Notice("No active file found.");
+					return;
+				}
+
+				const sourceFolderPath = path.dirname(
+					path.dirname(activeFilePath)
+				); //Website/Project
+
+				if (!sourceFolderPath || sourceFolderPath === ".") {
+					new Notice("No valid source folder found.");
+					return;
+				}
+
+				const completeSourceFolderPath = path.join(
+					basePath,
+					sourceFolderPath
+				);
+				//[...]/Website/Project
+
+				const pathMapping = pathMappings.find(
+					(mapping) => mapping.sourcePath === completeSourceFolderPath
+				);
+
+				let destinationFolderPath = defaultProjectFolder;
+
+				if (pathMapping) {
+					validatePath(pathMapping.destinationPath, false);
+					destinationFolderPath = pathMapping.destinationPath;
+				}
+
+				fs.readdirSync(completeSourceFolderPath).forEach(
+					(subFolder) => {
+						const subFolderPath = path.resolve(
+							sourceFolderPath, //Website/Project
+							subFolder //Attendo
+						);
+						const completeSubFolderPath = path.resolve(
+							completeSourceFolderPath, //[...]/Website/Project
+							subFolder //Attendo
 						);
 
-						const destinationFilePath = path.join(
-							destinationFolderPath,
-							file
+						const destinationPath = path.resolve(
+							destinationFolderPath, //[...]/Website/Project
+							subFolder //Attendo
 						);
-
-						if (fs.lstatSync(sourceFilePath).isDirectory()) {
-							// Recursively copy subdirectories
-							fs.cpSync(sourceFilePath, destinationFilePath, {
-								recursive: true,
-							});
-						} else if (
-							file.endsWith(".md") ||
-							file.endsWith(".mdx")
-						) {
-							// Process markdown files
-							processMDFile(
-								sourceFilePath,
-								parentFolderPath,
-								file,
-								destinationFilePath
-							);
-						} else {
-							// Copy files
-							fs.copyFileSync(
-								sourceFilePath,
-								destinationFilePath
+						if (fs.lstatSync(completeSubFolderPath).isDirectory()) {
+							pushFolder(
+								subFolderPath,
+								completeSubFolderPath,
+								destinationPath
 							);
 						}
-					});
+					}
+				);
 
-					new Notice(
-						`Your folder has been pushed! At ${destinationFolderPath}`
-					);
-				} catch (err) {
-					new Notice(`Ergror: ${err.message}`);
-				}
+				new Notice(
+					`Successfully pushed all your folders to ${destinationFolderPath}`
+				);
 			},
 		});
 
@@ -485,12 +515,58 @@ class MarkdownBloggerSettingTab extends PluginSettingTab {
 	}
 }
 
+function pushFolder(
+	parentFolderPath: string,
+	completeParentFolderPath: string,
+	destinationFolderPath: string
+) {
+	try {
+		if (!fs.existsSync(destinationFolderPath)) {
+			fs.mkdirSync(destinationFolderPath, {
+				recursive: true,
+			});
+		}
+
+		// Copy contents from the parent folder to the target folder
+		fs.readdirSync(completeParentFolderPath).forEach((file) => {
+			const sourceFilePath = path.join(completeParentFolderPath, file);
+
+			const destinationFilePath = path.join(destinationFolderPath, file);
+
+			if (fs.lstatSync(sourceFilePath).isDirectory()) {
+				// Recursively copy subdirectories
+				fs.cpSync(sourceFilePath, destinationFilePath, {
+					recursive: true,
+				});
+			} else if (file.endsWith(".md") || file.endsWith(".mdx")) {
+				// Process markdown files
+				processMDFile(
+					sourceFilePath,
+					parentFolderPath,
+					file,
+					destinationFilePath
+				);
+			} else {
+				// Copy files
+				fs.copyFileSync(sourceFilePath, destinationFilePath);
+			}
+		});
+	} catch (err) {
+		new Notice(`Ergror: ${err.message}`);
+	}
+}
+
 function validatePath(path: string, showNotice?: boolean) {
 	if (!fs.existsSync(path)) {
 		new ErrorModal(this.app).open();
 		throw new Error(`Path does not exist: ${path}`);
 	}
 	if (showNotice ?? true) new Notice(`Valid path: ${path}`);
+}
+
+function extractPublicPath(filePath: string): string {
+	const match = filePath.match(/public\/(.*)/);
+	return match ? match[1] : filePath;
 }
 
 function processMDFile(
@@ -500,13 +576,15 @@ function processMDFile(
 	destinationFilePath: string
 ) {
 	let content = fs.readFileSync(sourceFilePath, "utf8");
-	const customURLPrefix = `/work/${path.basename(parentFolderPath)}/`;
+	const customURLPrefix = `/${path.dirname(
+		path.dirname(extractPublicPath(destinationFilePath))
+	)}/${path.basename(parentFolderPath)}/`;
 
 	// Replace image paths with custom URL prefix
 	content = content.replace(
 		/!\[[^\]]*\]\((images\/[^\)]+)\)/g,
 		(match, p1) => {
-			const customURLPrefix = `/work/${path.basename(parentFolderPath)}/`;
+			// const customURLPrefix = `${path.basename(parentFolderPath)}/`;
 			return match.replace(p1, `${customURLPrefix}${p1}`);
 		}
 	);
@@ -535,6 +613,23 @@ function processMDFile(
 		);
 	} else {
 		updatedFrontMatter += `\ncover_url: `;
+	}
+
+	const logoUrlMatch = frontMatter.match(/logo_url:\s*(.*)/);
+	if (logoUrlMatch) {
+		let logoUrl = logoUrlMatch[1].trim();
+		if (!logoUrl.startsWith("http") && !logoUrl.startsWith("/")) {
+			logoUrl = path.join(
+				customURLPrefix,
+				logoUrl.replace(/^"\[\[|\]\]"$/g, "")
+			);
+		}
+		updatedFrontMatter = frontMatter.replace(
+			/logo_url:\s*".*?"/,
+			`logo_url: ${logoUrl}`
+		);
+	} else {
+		updatedFrontMatter += `\nlogo_url: `;
 	}
 
 	// Combine the updated front matter and body
